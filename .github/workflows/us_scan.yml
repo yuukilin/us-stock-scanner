@@ -1,0 +1,35 @@
+name: US Stock Scanner
+
+on:
+  schedule:
+    # 台灣時間早上 7:00 等於 UTC 時間前一天 23:00
+    # 設定為：週一到週五的 23:00 UTC (這樣等於台灣週二到週六早上7點，涵蓋美股週一到週五的收盤)
+    - cron: '0 23 * * 1-5'
+  workflow_dispatch:  # 允許手動按按鈕執行
+
+jobs:
+  run-scanner:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Create JSON key file
+      run: |
+        # 從 GitHub Secrets 產生鑰匙檔案
+        echo '${{ secrets.GCP_JSON }}' > service_account.json
+
+    - name: Run Python Script
+      run: |
+        python main_us.py
