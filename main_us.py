@@ -55,7 +55,6 @@ def update_rolling_data(new_data_list):
         except gspread.WorksheetNotFound:
             # 建立新工作表，只留 3 欄
             ws = sheet.add_worksheet(title=SHEET_NAME, rows="2000", cols="3")
-            ws.append_row(["日期", "代號", "名稱"])
 
         all_rows = ws.get_all_values()
         if len(all_rows) <= 1:
@@ -82,14 +81,32 @@ def update_rolling_data(new_data_list):
             keep_dates = unique_dates[:3]
             final_data = [row for row in final_data if row[0] in keep_dates]
         
-        ws.clear()
-        ws.append_row(header)
-        if final_data:
-            ws.append_rows(final_data)
+        # 單一 Sheets batch 原子更新內容與尾端清除；失敗不會留下半張表。
+        values = [header] + final_data
+        row_limit = max(len(all_rows), len(values))
+        col_limit = max(3, max((len(row) for row in all_rows + values), default=3))
+        requests = []
+        if row_limit > ws.row_count:
+            requests.append({"appendDimension": {
+                "sheetId": ws.id, "dimension": "ROWS", "length": row_limit - ws.row_count
+            }})
+        if col_limit > ws.col_count:
+            requests.append({"appendDimension": {
+                "sheetId": ws.id, "dimension": "COLUMNS", "length": col_limit - ws.col_count
+            }})
+        requests.append({"updateCells": {
+            "range": {"sheetId": ws.id, "startRowIndex": 0, "endRowIndex": row_limit,
+                      "startColumnIndex": 0, "endColumnIndex": col_limit},
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(value)}}
+                                  for value in row]} for row in values],
+            "fields": "userEnteredValue"
+        }})
+        sheet.batch_update({"requests": requests})
         print(f"✅ 更新完成！寫入 {len(today_rows)} 筆資料 (僅保留日期/代號/名稱)。")
 
     except Exception as e:
         print(f"❌ 存檔失敗: {e}")
+        raise
 
 # ===========================
 # 4. 取得股票清單 (S&P 500 + 400)
